@@ -493,7 +493,7 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
     return nn.Sequential(*layers), sorted(save)
 
 
-from thop import clever_format, profile
+# from thop import clever_format, profile
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

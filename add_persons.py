@@ -7,21 +7,21 @@ import numpy as np
 import torch
 from torchvision import transforms
 
-from face_detection.scrfd.detector import SCRFD
-from face_detection.yolov5_face.detector import Yolov5Face
-from face_recognition.arcface.model import iresnet_inference
-from face_recognition.arcface.utils import read_features
+from scrfd.detector import SCRFD
+# from face_detection.yolov5_face.detector import Yolov5Face
+from arcface.model import iresnet_inference
+from arcface.utils import read_features
 
 # Check if CUDA is available and set the device accordingly
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
+model_path = os.path.join("face_recognition", "arcface", "1", "arcface_r100.pth")
 # Initialize the face detector (Choose one of the detectors)
 # detector = Yolov5Face(model_file="face_detection/yolov5_face/weights/yolov5n-face.pt")
-detector = SCRFD(model_file="face_detection/scrfd/weights/scrfd_2.5g_bnkps.onnx")
+detector = SCRFD(model_file="scrfd/weights/scrfd_2.5g_bnkps.onnx")
 
 # Initialize the face recognizer
 recognizer = iresnet_inference(
-    model_name="r100", path="face_recognition/arcface/weights/arcface_r100.pth", device=device
+    model_name="r100",  path=r"arcface/1/arcface_r100.pth", device=device
 )
 
 

@@ -1,30 +1,31 @@
 import threading
 import time
-
+from queue import Queue
 import cv2
 import numpy as np
 import torch
 import yaml
 from torchvision import transforms
-
+import os
 from face_alignment.alignment import norm_crop
-from face_detection.scrfd.detector import SCRFD
-from face_detection.yolov5_face.detector import Yolov5Face
-from face_recognition.arcface.model import iresnet_inference
-from face_recognition.arcface.utils import compare_encodings, read_features
+from scrfd.detector import SCRFD
+# from face_detection.yolov5_face.detector import Yolov5Face
+from arcface.model import iresnet_inference
+from arcface.utils import compare_encodings, read_features
 from face_tracking.tracker.byte_tracker import BYTETracker
 from face_tracking.tracker.visualize import plot_tracking
-
-# Device configuration
+os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # Face detector (choose one)
-detector = SCRFD(model_file="face_detection/scrfd/weights/scrfd_2.5g_bnkps.onnx")
+detector = SCRFD(model_file="scrfd/weights/scrfd_2.5g_bnkps.onnx")
+detector.prepare(ctx_id=0 if torch.cuda.is_available() else -1)  # Sử dụng GPU nếu có
+
 # detector = Yolov5Face(model_file="face_detection/yolov5_face/weights/yolov5n-face.pt")
 
 # Face recognizer
 recognizer = iresnet_inference(
-    model_name="r100", path="face_recognition/arcface/weights/arcface_r100.pth", device=device
+    model_name="r100", path=r"arcface/1/arcface_r100.pth", device=device
 )
 
 # Load precomputed face features and names
@@ -207,6 +208,15 @@ def mapping_bbox(box1, box2):
 
     return iou
 
+    # inter = np.maximum(0, np.minimum(box1[2:], box2[2:]) - np.maximum(box1[:2], box2[:2]) + 1)
+    # intersection_area = inter[0] * inter[1]
+    # area_box1 = (box1[2] - box1[0] + 1) * (box1[3] - box1[1] + 1)
+    # area_box2 = (box2[2] - box2[0] + 1) * (box2[3] - box2[1] + 1)
+    # iou = intersection_area / (area_box1 + area_box2 - intersection_area)
+    # return iou 
+
+frame_queue = Queue(maxsize=5)
+result_queue = Queue(maxsize=5)
 
 def tracking(detector, args):
     """
@@ -219,26 +229,32 @@ def tracking(detector, args):
     # Initialize variables for measuring frame rate
     start_time = time.time_ns()
     frame_count = 0
-    fps = -1
+    fps = +1
 
     # Initialize a tracker and a timer
-    tracker = BYTETracker(args=args, frame_rate=30)
+    tracker = BYTETracker(args=args, frame_rate=50)
     frame_id = 0
 
     cap = cv2.VideoCapture(0)
 
     while True:
         _, img = cap.read()
-
+        img = cv2.resize(img, (640, 480))  # Giảm độ phân giải (optional)
         tracking_image = process_tracking(img, detector, tracker, args, frame_id, fps)
+        
+        if frame_queue.full():
+            frame_queue.get()  # Loại bỏ frame cũ
+        frame_queue.put(img)
 
+         
         # Calculate and display the frame rate
         frame_count += 1
         if frame_count >= 30:
             fps = 1e9 * frame_count / (time.time_ns() - start_time)
             frame_count = 0
             start_time = time.time_ns()
-
+        time.sleep(0.01)  # Giảm tải CPU    
+        
         cv2.imshow("Face Recognition", tracking_image)
 
         # Check for user exit input
@@ -275,7 +291,7 @@ def recognize():
                     detection_landmarks = np.delete(detection_landmarks, j, axis=0)
 
                     break
-
+        del detection_bboxes, detection_landmarks  # Giải phóng bộ nhớ không cần thiết
         if tracking_bboxes == []:
             print("Waiting for a person...")
 
@@ -291,6 +307,7 @@ def main():
         args=(
             detector,
             config_tracking,
+        
         ),
     )
     thread_track.start()
@@ -298,6 +315,9 @@ def main():
     # Start recognition thread
     thread_recognize = threading.Thread(target=recognize)
     thread_recognize.start()
+    
+    # thread_display = threading.Thread(target=display_thread, args=(result_queue,))
+    # thread_display.start()
 
 
 if __name__ == "__main__":
